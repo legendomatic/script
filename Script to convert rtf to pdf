@@ -1,0 +1,66 @@
+# Load the required assemblies for the FileDialog
+Add-Type -AssemblyName System.Windows.Forms
+
+# Create a .NET FileDialog object
+$OpenFileDialog = New-Object System.Windows.Forms.OpenFileDialog
+
+# Set properties for the dialog
+$OpenFileDialog.InitialDirectory = "C:\Users\xifi\Downloads" # Set your default directory
+$OpenFileDialog.Filter = "RTF Files (*.rtf)|*.rtf"
+$OpenFileDialog.Title = "Select an RTF File"
+
+# Show the dialog and get the result
+[void]$OpenFileDialog.ShowDialog()
+$rtfFile = $OpenFileDialog.FileName  # Get the selected file's full path
+
+# Check if a file was selected or the dialog canceled
+if ([string]::IsNullOrEmpty($rtfFile)) {
+  Write-Warning "No file selected. Exiting."
+  return
+}
+
+# Construct the output PDF file path
+$pdfFile = [IO.Path]::ChangeExtension($rtfFile, ".pdf")
+
+try {
+    $word = New-Object -ComObject Word.Application
+    $word.Visible = $false
+
+    $doc = $word.Documents.Open($rtfFile)
+
+    if ($doc) {
+        $pageCount = $doc.PageCount
+        if ($pageCount -gt 0) {
+            for ($i = 1; $i -le $pageCount; $i++) {
+                Write-Progress -Activity "Converting RTF to PDF" -PercentComplete ($i * 100 / $pageCount) -Status "Processing page $i of $pageCount"
+            }
+        } else {
+            Write-Progress -Activity "Converting RTF to PDF" -PercentComplete 50 -Status "Converting file..." 
+        }
+
+        $doc.SaveAs([ref] $pdfFile, [ref] 17) # 17 is wdFormatPDF
+        $doc.Close()
+    }
+
+} catch {
+    Write-Error "Conversion failed: $_"
+} finally {
+    if ($word) {
+        if ($IsWindows) {
+            if ($doc) {
+                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($doc) | Out-Null
+            }
+            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null
+        }
+        if (Test-Path variable:doc) { Remove-Variable doc }
+        Remove-Variable word -ErrorAction SilentlyContinue
+    }
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+
+    if (Test-Path $pdfFile) {
+        Write-Host "Conversion completed! PDF saved at: $pdfFile" -ForegroundColor Green
+    } else {
+        Write-Host "Conversion failed! See previous error message for details." -ForegroundColor Red
+    }
+}
