@@ -1,0 +1,33 @@
+$OutputFile = "$([Environment]::GetFolderPath('Desktop'))\DFS_Replication_Logs.csv"
+
+# Retrieve all events from the DFS Replication log
+$Events = Get-WinEvent -LogName "DFS Replication"
+
+# Limit to the first 7000 events (if there are more than 7000)
+$FilteredEvents = $Events | Sort-Object TimeCreated | Select-Object -First 7000
+
+# Total number of events to process
+$TotalEvents = $FilteredEvents.Count
+$ProcessedEvents = @()
+
+# Process each event with a progress bar
+foreach ($Event in $FilteredEvents) {
+    # Extract relevant properties and add them to the processed array
+    $ProcessedEvents += [PSCustomObject]@{
+        TimeCreated      = $Event.TimeCreated
+        Id               = $Event.Id
+        LevelDisplayName = $Event.LevelDisplayName
+        Message          = $Event.Message
+    }
+
+    # Update progress bar
+    Write-Progress -Activity "Processing DFS Replication Logs" `
+                   -Status "Processing event $($ProcessedEvents.Count) of $TotalEvents" `
+                   -PercentComplete (($ProcessedEvents.Count / $TotalEvents) * 100)
+}
+
+# Export processed events to a CSV file without truncation
+$ProcessedEvents | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8
+
+# Notify the user of completion
+Write-Host "The logs have been saved to $OutputFile"
